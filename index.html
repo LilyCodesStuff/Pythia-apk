@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pythia Vocal Synth</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{font-family:Arial,sans-serif;background-color:#222;color:#EEE;overflow:hidden;}
+.screen{position:absolute;inset:0;display:none;}
+.screen.active{display:flex;}
+#mainScreen{flex-direction:row;}
+.sidebar{width:200px;min-width:200px;background-color:#2a2a2a;padding:15px;overflow-y:auto;display:flex;flex-direction:column;}
+.sidebar h3{font-weight:bold;margin-top:15px;margin-bottom:8px;font-size:12px;color:#aaa;}
+.sidebar h3:first-child{margin-top:0;}
+button{width:100%;background-color:#555;border:1px solid #777;padding:8px;color:#EEE;cursor:pointer;margin-bottom:8px;font-size:13px;font-family:Arial,sans-serif;text-align:left;}
+button:hover,button:active{background-color:#777;}
+button.active{background-color:#007bff;border-color:#007bff;}
+button:disabled{opacity:0.4;cursor:not-allowed;}
+.file-label{display:block;width:100%;background-color:#555;border:1px solid #777;padding:8px;text-align:left;cursor:pointer;margin-bottom:8px;font-size:13px;color:#EEE;}
+.file-label:hover{background-color:#777;}
+input[type="file"]{display:none;}
+.tempo-control{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.tempo-control label{font-size:13px;white-space:nowrap;}
+.tempo-control input[type=range]{flex:1;}
+.tempo-control span{font-size:13px;min-width:30px;}
+.vb-label{font-size:12px;margin-bottom:8px;word-wrap:break-word;color:#ccc;}
+.tool-row{display:flex;gap:6px;margin-bottom:8px;}
+.tool-row button{margin:0;}
+.canvas-container{flex:1;overflow:auto;background-color:#1e1e1e;position:relative;}
+canvas{display:block;cursor:crosshair;touch-action:none;}
+canvas.select-mode{cursor:default;}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;align-items:center;justify-content:center;}
+.modal.open{display:flex;}
+.modal-box{background:#2a2a2a;border:1px solid #555;padding:20px;width:85%;max-width:300px;}
+.modal-box h3{font-size:14px;margin-bottom:12px;color:#aaa;}
+.modal-box input[type=text]{width:100%;background:#333;border:1px solid #777;color:#EEE;padding:8px;font-size:14px;font-family:Arial,sans-serif;margin-bottom:12px;outline:none;}
+.modal-box input[type=text]:focus{border-color:#007bff;}
+.modal-btns{display:flex;gap:8px;}
+.modal-btns button{margin:0;}
+.modal-btns button.ok{background-color:#007bff;border-color:#007bff;}
+#vbScreen{flex-direction:column;background-color:#222;padding:15px;gap:10px;overflow-y:auto;}
+.vb-header{display:flex;align-items:center;gap:12px;}
+.vb-header h2{font-size:16px;font-weight:bold;color:#EEE;}
+.vb-nameinput{width:100%;background:#333;border:1px solid #777;color:#EEE;padding:8px;font-size:14px;font-family:Arial,sans-serif;outline:none;}
+.vb-nameinput:focus{border-color:#007bff;}
+.vb-progress{font-size:12px;color:#aaa;}
+.lang-row{display:flex;gap:8px;}
+.lang-btn{flex:1;padding:8px;background:#3a3a3a;border:1px solid #555;color:#EEE;cursor:pointer;font-size:13px;font-family:Arial,sans-serif;}
+.lang-btn.active{background:#007bff;border-color:#007bff;}
+.phoneme-display{background:#2a2a2a;border:1px solid #555;padding:20px;text-align:center;}
+.phoneme-big{font-size:56px;font-weight:bold;color:#EEE;line-height:1;}
+.phoneme-hira{font-size:26px;color:#007bff;margin-top:6px;}
+.phoneme-hint{font-size:12px;color:#aaa;margin-top:8px;}
+.rec-btn{width:100%;padding:16px;background-color:#cc3333;border:1px solid #ff4444;color:#EEE;font-size:16px;font-weight:bold;cursor:pointer;font-family:Arial,sans-serif;}
+.rec-btn.recording{background-color:#ff0000;border-color:#ff0000;}
+.nav-row{display:flex;gap:8px;}
+.nav-row button{margin:0;}
+.nav-row button.ok{background-color:#28a745;border-color:#28a745;}
+.pills{display:flex;flex-wrap:wrap;gap:4px;min-height:28px;}
+.pill{font-size:11px;padding:3px 8px;background:#3a3a3a;border:1px solid #555;color:#ccc;}
+.save-vb-btn{width:100%;padding:12px;background-color:#28a745;border:1px solid #28a745;color:#EEE;font-size:14px;font-weight:bold;cursor:pointer;font-family:Arial,sans-serif;}
+.save-vb-btn:disabled{opacity:0.4;cursor:not-allowed;background-color:#555;border-color:#777;}
+.saved-vb-item{display:flex;align-items:center;gap:4px;margin-bottom:4px;}
+.saved-vb-item button{margin:0;font-size:11px;padding:5px;}
+.del-btn{width:auto!important;background:#8b0000!important;border-color:#cc0000!important;padding:5px 8px!important;}
+.status-bar{font-size:10px;color:#888;margin-top:2px;min-height:14px;}
+</style>
+</head>
+<body>
+<div id="mainScreen" class="screen active">
+  <div class="sidebar">
+    <h3>VOICEBANK</h3>
+    <div class="vb-label" id="vbName">Current: None</div>
+    <div class="status-bar" id="statusBar">Loading...</div>
+    <div style="font-size:11px;color:#aaa;margin-bottom:3px;">Saved:</div>
+    <div id="savedVBList"></div>
+    <label for="vbFile" class="file-label">Load .PYAI File</label>
+    <input type="file" id="vbFile" accept=".pyai,.PYAI,.json">
+    <label for="samplesDir" class="file-label">Load Samples Folder</label>
+    <input type="file" id="samplesDir" webkitdirectory multiple>
+    <button onclick="showScreen('vbScreen')">Make Voicebank</button>
+    <h3>PROJECT</h3>
+    <button onclick="saveProject()">Save Project</button>
+    <label for="projFile" class="file-label">Load Project</label>
+    <input type="file" id="projFile" accept=".json">
+    <button onclick="exportWav()">Export to WAV</button>
+    <h3>PLAYBACK</h3>
+    <div class="tempo-control">
+      <label>Tempo:</label>
+      <input type="range" id="bpmSlider" min="60" max="300" value="120" oninput="setBpm(this.value)">
+      <span id="bpmVal">120</span>
+    </div>
+    <button onclick="playSeq()">Play Sequence</button>
+    <button onclick="pauseSeq()">Pause</button>
+    <button onclick="resetHead()">Reset Playhead</button>
+    <h3>TOOLS</h3>
+    <div class="tool-row">
+      <button class="active" id="btnDraw" onclick="setMode('draw')">Draw Mode</button>
+      <button id="btnSel" onclick="setMode('select')">Select Mode</button>
+    </div>
+    <button onclick="deleteSelected()">Delete Selected Notes</button>
+    <button onclick="clearAll()">Clear All Notes</button>
+  </div>
+  <div class="canvas-container" id="rollWrap">
+    <canvas id="roll"></canvas>
+  </div>
+</div>
+
+<div id="vbScreen" class="screen">
+  <div class="vb-header">
+    <button onclick="showScreen('mainScreen')" style="width:auto;margin:0;">Back</button>
+    <h2>Voicebank Creator</h2>
+  </div>
+  <div>
+    <label style="font-size:12px;color:#aaa;display:block;margin-bottom:4px;">Voicebank Name</label>
+    <input class="vb-nameinput" id="vbNameInput" type="text" value="My Voicebank">
+  </div>
+  <div>
+    <label style="font-size:12px;color:#aaa;display:block;margin-bottom:6px;">Language</label>
+    <div class="lang-row">
+      <button class="lang-btn active" id="langJP" onclick="setLang('JP')">Japanese (JP)</button>
+      <button class="lang-btn" id="langEN" onclick="setLang('EN')">English (EN)</button>
+    </div>
+  </div>
+  <div class="vb-progress">Progress: <span id="vbDone">0</span> / <span id="vbTotal">0</span> phonemes recorded</div>
+  <div class="phoneme-display">
+    <div class="phoneme-big" id="phRomaji">A</div>
+    <div class="phoneme-hira" id="phHira">あ</div>
+    <div class="phoneme-hint" id="phHint">Hold the button and say this sound clearly</div>
+  </div>
+  <button class="rec-btn" id="recBtn" ontouchstart="startRec(event)" ontouchend="stopRec(event)" onmousedown="startRec(event)" onmouseup="stopRec(event)">Hold to Record</button>
+  <div class="nav-row">
+    <button id="prevBtn" onclick="previewRec()" disabled>Preview</button>
+    <button onclick="skipPh()">Skip</button>
+    <button class="ok" id="nextBtn" onclick="nextPh()" disabled>Next</button>
+  </div>
+  <div>
+    <div style="font-size:11px;color:#aaa;margin-bottom:4px;">Recorded phonemes:</div>
+    <div class="pills" id="pills"></div>
+  </div>
+  <button class="save-vb-btn" id="saveVbBtn" onclick="saveVoicebank()" disabled>Save Voicebank</button>
+</div>
+
+<div class="modal" id="lyricModal">
+  <div class="modal-box">
+    <h3>Enter note lyric:</h3>
+    <input type="text" id="lyricInput" value="a" placeholder="e.g. a, ka, shi, hello">
+    <div class="modal-btns">
+      <button onclick="closeModal()">Cancel</button>
+      <button class="ok" onclick="confirmNote()">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── PHONEME LISTS ──────────────────────────────────
+const JP_PH = [
+  ["a","あ",""],["i","い",""],["u","う",""],["e","え",""],["o","お",""],
+  ["ka","か",""],["ki","き",""],["ku","く",""],["ke","け",""],["ko","こ",""],
+  ["sa","さ",""],["shi","し",""],["su","す",""],["se","せ",""],["so","そ",""],
+  ["ta","た",""],["chi","ち",""],["tsu","つ",""],["te","て",""],["to","と",""],
+  ["na","な",""],["ni","に",""],["nu","ぬ",""],["ne","ね",""],["no","の",""],
+  ["ha","は",""],["hi","ひ",""],["fu","ふ",""],["he","へ",""],["ho","ほ",""],
+  ["ma","ま",""],["mi","み",""],["mu","む",""],["me","め",""],["mo","も",""],
+  ["ya","や",""],["yu","ゆ",""],["yo","よ",""],
+  ["ra","ら",""],["ri","り",""],["ru","る",""],["re","れ",""],["ro","ろ",""],
+  ["wa","わ",""],["wo","を",""],["n","ん",""],
+  ["ga","が",""],["gi","ぎ",""],["gu","ぐ",""],["ge","げ",""],["go","ご",""],
+  ["za","ざ",""],["ji","じ",""],["zu","ず",""],["ze","ぜ",""],["zo","ぞ",""],
+  ["da","だ",""],["de","で",""],["do","ど",""],
+  ["ba","ば",""],["bi","び",""],["bu","ぶ",""],["be","べ",""],["bo","ぼ",""],
+  ["pa","ぱ",""],["pi","ぴ",""],["pu","ぷ",""],["pe","ぺ",""],["po","ぽ",""],
+];
+
+// ARPAbet phonemes with example words (no CMUdict!)
+const EN_PH = [
+  ["AA","Vowel","f-AA-ther"],["AE","Vowel","c-AE-t"],["AH","Vowel","b-UH-t"],
+  ["AO","Vowel","t-AW-k"],["AW","Vowel","c-OW"],["AY","Vowel","fl-Y"],
+  ["EH","Vowel","b-E-d"],["ER","Vowel","b-IR-d"],["EY","Vowel","f-AY-ce"],
+  ["IH","Vowel","s-I-t"],["IY","Vowel","s-EE"],["OW","Vowel","g-O"],
+  ["OY","Vowel","b-OY"],["UH","Vowel","b-OO-k"],["UW","Vowel","f-OO-d"],
+  ["B","Stop","B-at"],["CH","Affricate","CH-in"],["D","Stop","D-ig"],
+  ["DH","Fricative","TH-is"],["F","Fricative","F-at"],["G","Stop","G-o"],
+  ["HH","Aspirate","H-at"],["JH","Affricate","J-oy"],["K","Stop","K-ey"],
+  ["L","Liquid","L-et"],["M","Nasal","M-at"],["N","Nasal","N-ot"],
+  ["NG","Nasal","si-NG"],["P","Stop","P-at"],["R","Liquid","R-at"],
+  ["S","Fricative","S-at"],["SH","Fricative","SH-e"],["T","Stop","T-op"],
+  ["TH","Fricative","TH-in"],["V","Fricative","V-at"],["W","Semivowel","W-et"],
+  ["Y","Semivowel","Y-et"],["Z","Fricative","Z-ap"],["ZH","Fricative","mea-SU-re"],
+];
+
+// Simple English G2P rules (no external libs)
+const EN_G2P = {
+  // Common words
+  "the":["DH","AH"],"a":["AH"],"an":["AE","N"],"and":["AE","N","D"],
+  "to":["T","UW"],"of":["AH","V"],"in":["IH","N"],"is":["IH","Z"],
+  "it":["IH","T"],"you":["Y","UW"],"he":["HH","IY"],"she":["SH","IY"],
+  "we":["W","IY"],"they":["DH","EY"],"i":["AY"],
+  "be":["B","IY"],"been":["B","IH","N"],"are":["AA","R"],"was":["W","AH","Z"],
+  "have":["HH","AE","V"],"has":["HH","AE","Z"],"had":["HH","AE","D"],
+  "do":["D","UW"],"does":["D","AH","Z"],"did":["D","IH","D"],
+  "can":["K","AE","N"],"will":["W","IH","L"],"would":["W","UH","D"],
+  "my":["M","AY"],"your":["Y","AO","R"],"his":["HH","IH","Z"],
+  "her":["HH","ER"],"our":["AW","R"],"their":["DH","EH","R"],
+  "this":["DH","IH","S"],"that":["DH","AE","T"],"with":["W","IH","DH"],
+  "for":["F","AO","R"],"on":["AO","N"],"at":["AE","T"],
+  "not":["N","AA","T"],"but":["B","AH","T"],"or":["AO","R"],
+  "from":["F","R","AH","M"],"by":["B","AY"],"so":["S","OW"],
+  "up":["AH","P"],"out":["AW","T"],"if":["IH","F"],
+  "about":["AH","B","AW","T"],"what":["W","AH","T"],"all":["AO","L"],
+  "were":["W","ER"],"when":["W","EH","N"],"how":["HH","AW"],
+  "hello":["HH","EH","L","OW"],"world":["W","ER","L","D"],
+  "love":["L","AH","V"],"sing":["S","IH","NG"],"song":["S","AO","NG"],
+  "voice":["V","OY","S"],"music":["M","Y","UW","Z","IH","K"],
+  "dream":["D","R","IY","M"],"heart":["HH","AA","R","T"],
+};
+
+// Fallback letter->phoneme map
+const LETTER_PH = {
+  'a':'AH','b':'B','c':'K','d':'D','e':'EH','f':'F','g':'G','h':'HH',
+  'i':'IH','j':'JH','k':'K','l':'L','m':'M','n':'N','o':'OW','p':'P',
+  'q':'K','r':'R','s':'S','t':'T','u':'AH','v':'V','w':'W','x':'K',
+  'y':'Y','z':'Z'
+};
+
+function g2p(word) {
+  word = word.toLowerCase().trim();
+  if(EN_G2P[word]) return EN_G2P[word];
+  // Letter by letter fallback
+  return [...word].map(c => LETTER_PH[c] || 'AH');
+}
+
+// ── STATE ──────────────────────────────────────────
+const S = {
+  GX:40,GY:20,CW:4800,CH:1760,
+  notes:[],selected:new Set(),
+  mode:'draw',tempo:120,
+  vb:null,audioFiles:{},
+  audioCtx:null,
+  playTimer:null,playIdx:0,playNotes:[],
+  showHead:false,playheadX:0,
+  pendingNote:null,
+  dragging:null,resizing:null,dragOff:{x:0,y:0},
+  phIdx:0,recordings:{},recording:false,
+  mediaRecorder:null,recChunks:[],
+  vbLang:'JP',
+};
+
+function currentPhonemes() { return S.vbLang==='JP' ? JP_PH : EN_PH; }
+
+// ── SCREEN ─────────────────────────────────────────
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');if(id==='vbScreen')initVBMaker();}
+
+// ── CANVAS ─────────────────────────────────────────
+const canvas=document.getElementById('roll'),ctx=canvas.getContext('2d');
+canvas.width=S.CW;canvas.height=S.CH;
+
+function drawAll(){
+  ctx.fillStyle='#1e1e1e';ctx.fillRect(0,0,S.CW,S.CH);
+  ctx.strokeStyle='#323232';ctx.lineWidth=1;
+  for(let y=0;y<=S.CH;y+=S.GY){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(S.CW,y);ctx.stroke();}
+  for(let x=0;x<=S.CW;x+=S.GX){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,S.CH);ctx.stroke();}
+  S.notes.forEach(n=>{
+    const sel=S.selected.has(n);
+    ctx.fillStyle='rgba(100,100,255,0.8)';ctx.fillRect(n.x,n.y,n.w,n.h);
+    ctx.strokeStyle=sel?'yellow':'#000';ctx.lineWidth=sel?2:1;ctx.strokeRect(n.x,n.y,n.w,n.h);
+    ctx.fillStyle='white';ctx.font='12px Arial';ctx.fillText(n.lyric,n.x+4,n.y+14);
+    ctx.fillStyle='rgba(255,255,255,0.25)';ctx.fillRect(n.x+n.w-6,n.y+2,4,n.h-4);
+  });
+  if(S.showHead){ctx.strokeStyle='red';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(S.playheadX,0);ctx.lineTo(S.playheadX,S.CH);ctx.stroke();}
+}
+drawAll();
+
+// ── INPUT ──────────────────────────────────────────
+function getPos(e){const wrap=document.getElementById('rollWrap'),rect=canvas.getBoundingClientRect(),t=e.touches?e.touches[0]:e;return{x:t.clientX-rect.left+wrap.scrollLeft,y:t.clientY-rect.top+wrap.scrollTop};}
+function snap(v,g){return Math.round(v/g)*g;}
+function y2midi(y){return 88-Math.floor(y/S.GY);}
+function midi2rate(m){return m?Math.pow(2,(m-69)/12):1;}
+
+canvas.addEventListener('touchstart',onDown,{passive:false});canvas.addEventListener('mousedown',onDown);
+canvas.addEventListener('touchmove',onMove,{passive:false});canvas.addEventListener('mousemove',onMove);
+canvas.addEventListener('touchend',onUp);canvas.addEventListener('mouseup',onUp);
+
+function onDown(e){
+  e.preventDefault();const p=getPos(e);
+  if(S.mode==='draw'){S.pendingNote={x:snap(p.x,S.GX),y:snap(p.y,S.GY)};return;}
+  for(let i=S.notes.length-1;i>=0;i--){
+    const n=S.notes[i];
+    if(p.x>=n.x&&p.x<=n.x+n.w&&p.y>=n.y&&p.y<=n.y+n.h){
+      if(p.x>n.x+n.w-14){S.resizing=n;S.dragOff.x=p.x-(n.x+n.w);return;}
+      if(!S.selected.has(n)){S.selected.clear();S.selected.add(n);}
+      S.dragging=n;S.dragOff={x:p.x-n.x,y:p.y-n.y};drawAll();return;
+    }
+  }
+  S.selected.clear();drawAll();
+}
+function onMove(e){
+  e.preventDefault();const p=getPos(e);
+  if(S.resizing){S.resizing.w=Math.max(S.GX,snap(p.x-S.resizing.x-S.dragOff.x,S.GX));drawAll();return;}
+  if(S.dragging){S.dragging.x=Math.max(0,snap(p.x-S.dragOff.x,S.GX));S.dragging.y=Math.max(0,Math.min(snap(p.y-S.dragOff.y,S.GY),S.CH-S.GY));S.dragging.pitch=y2midi(S.dragging.y);drawAll();}
+}
+function onUp(e){
+  if(S.resizing){S.resizing=null;return;}
+  if(S.dragging){S.dragging=null;return;}
+  if(S.pendingNote&&S.mode==='draw'){const pn=S.pendingNote;S.pendingNote=null;openModal(pn.x,pn.y);}
+}
+
+// ── MODAL ──────────────────────────────────────────
+let _px,_py;
+function openModal(x,y){_px=x;_py=y;document.getElementById('lyricModal').classList.add('open');const i=document.getElementById('lyricInput');i.value='a';setTimeout(()=>{i.focus();i.select();},100);}
+function closeModal(){document.getElementById('lyricModal').classList.remove('open');}
+function confirmNote(){const l=document.getElementById('lyricInput').value.trim()||'a';S.notes.push({x:_px,y:_py,w:S.GX,h:S.GY,lyric:l,pitch:y2midi(_py)});drawAll();closeModal();}
+document.getElementById('lyricInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmNote();if(e.key==='Escape')closeModal();});
+
+// ── TOOLS ──────────────────────────────────────────
+function setMode(m){S.mode=m;document.getElementById('btnDraw').classList.toggle('active',m==='draw');document.getElementById('btnSel').classList.toggle('active',m==='select');canvas.classList.toggle('select-mode',m==='select');}
+function deleteSelected(){S.notes=S.notes.filter(n=>!S.selected.has(n));S.selected.clear();drawAll();}
+function clearAll(){if(confirm('Clear all notes?')){S.notes=[];S.selected.clear();drawAll();}}
+function setBpm(v){S.tempo=parseInt(v);document.getElementById('bpmVal').textContent=v;}
+
+// ── VOICEBANK LOADING ──────────────────────────────
+document.getElementById('vbFile').addEventListener('change',async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{S.vb=JSON.parse(await f.text());document.getElementById('vbName').textContent='Current: '+(S.vb.name||'Unknown')+' ('+(S.vb.language||'JP')+')';}
+  catch(err){alert('Failed to load voicebank: '+err.message);}
+});
+document.getElementById('samplesDir').addEventListener('change',async e=>{
+  if(!S.vb){alert('Load the .PYAI file first!');return;}
+  setStatus('Loading samples...');
+  S.audioFiles={};
+  for(const f of e.target.files)if(f.name.endsWith('.wav'))S.audioFiles[f.name]=await f.arrayBuffer();
+  const count=Object.keys(S.audioFiles).length;
+  await dbSaveVB(S.vb.name,S.vb,S.audioFiles);
+  document.getElementById('vbName').textContent='Current: '+S.vb.name+' ('+(S.vb.language||'JP')+')';
+  setStatus('Saved! '+count+' samples stored.');
+  await refreshVBList();
+});
+document.getElementById('projFile').addEventListener('change',async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{const d=JSON.parse(await f.text());S.notes=d.map(n=>({x:n.x,y:n.y,w:n.width||n.w||S.GX,h:S.GY,lyric:n.lyric,pitch:n.pitch}));S.selected.clear();drawAll();}
+  catch(err){alert('Failed: '+err.message);}
+});
+
+// ── AUDIO ──────────────────────────────────────────
+function getAC(){if(!S.audioCtx)S.audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(S.audioCtx.state==='suspended')S.audioCtx.resume();return S.audioCtx;}
+async function playSample(key,rate=1){
+  if(!S.vb||!S.vb.samples)return;const fn=S.vb.samples[key];if(!fn)return;const buf=S.audioFiles[fn];if(!buf)return;
+  try{const ac=getAC(),ab=await ac.decodeAudioData(buf.slice(0)),src=ac.createBufferSource();src.buffer=ab;src.playbackRate.value=rate;src.connect(ac.destination);src.start(0);}
+  catch(e){console.warn(e);}
+}
+
+function getPhonemes(lyric){
+  if(!S.vb)return[lyric];
+  const lang=(S.vb.language||'JP').toUpperCase();
+  const lo=lyric.toLowerCase().trim();
+  if(lang==='EN'){
+    const phs=g2p(lo);
+    // check which ones we actually have samples for
+    return phs.filter(p=>S.vb.samples&&S.vb.samples[p]).length>0
+      ? phs.filter(p=>S.vb.samples&&S.vb.samples[p])
+      : S.vb.samples&&S.vb.samples[lo]?[lo]:phs;
+  }
+  return S.vb.samples&&S.vb.samples[lo]?[lo]:[lo];
+}
+
+// ── PLAYBACK ───────────────────────────────────────
+function playSeq(){
+  if(!S.vb){alert('Please load a voicebank first!');return;}
+  if(S.playTimer)clearTimeout(S.playTimer);
+  S.playNotes=[...S.notes].sort((a,b)=>a.x-b.x);
+  if(!S.playNotes.length){alert('No notes to play!');return;}
+  S.playIdx=0;S.showHead=true;_next();
+}
+function _next(){
+  if(S.playIdx>=S.playNotes.length){resetHead();return;}
+  const n=S.playNotes[S.playIdx];S.playheadX=n.x;drawAll();
+  document.getElementById('rollWrap').scrollLeft=Math.max(0,n.x-150);
+  const rate=midi2rate(n.pitch),base=(60000/S.tempo)/4;
+  const phs=getPhonemes(n.lyric);
+  phs.forEach((p,i)=>setTimeout(()=>playSample(p,rate),i*base));
+  const dur=(60000/S.tempo)*(n.w/S.GX);S.playIdx++;S.playTimer=setTimeout(_next,dur);
+}
+function pauseSeq(){if(S.playTimer){clearTimeout(S.playTimer);S.playTimer=null;}}
+function resetHead(){pauseSeq();S.playIdx=0;S.showHead=false;S.playheadX=0;drawAll();}
+
+// ── SAVE / EXPORT ──────────────────────────────────
+function saveProject(){const d=S.notes.map(n=>({x:n.x,y:n.y,width:n.w,pitch:n.pitch,lyric:n.lyric})),b=new Blob([JSON.stringify(d,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='pythia_project.json';a.click();}
+
+async function exportWav(){
+  if(!S.vb){alert('Please load a voicebank first!');return;}
+  const ns=[...S.notes].sort((a,b)=>a.x-b.x);if(!ns.length){alert('No notes!');return;}
+  const ac=getAC(),sr=44100,last=ns[ns.length-1];
+  const td=((last.x+last.w)/S.GX*60)/S.tempo,ts=Math.ceil(td*sr),out=new Float32Array(ts*2);
+  for(const n of ns){
+    const st=(n.x/S.GX*60)/S.tempo,rate=midi2rate(n.pitch),phs=getPhonemes(n.lyric);
+    for(let i=0;i<phs.length;i++){
+      const fn=S.vb.samples[phs[i]];if(!fn)continue;const raw=S.audioFiles[fn];if(!raw)continue;
+      try{const ab=await ac.decodeAudioData(raw.slice(0)),c0=ab.getChannelData(0),c1=ab.numberOfChannels>1?ab.getChannelData(1):c0,ps=Math.floor((st+i*0.25*60/S.tempo)*sr);for(let s=0;s<c0.length&&ps+s<ts;s++){out[(ps+s)*2]+=c0[s];out[(ps+s)*2+1]+=c1[s];}}catch(e){console.warn(e);}
+    }
+  }
+  let mx=0;for(let i=0;i<out.length;i++)mx=Math.max(mx,Math.abs(out[i]));if(mx>0)for(let i=0;i<out.length;i++)out[i]=out[i]/mx*0.9;
+  const buf=new ArrayBuffer(44+ts*4),v=new DataView(buf);
+  function ws(o,s){for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));}
+  ws(0,'RIFF');v.setUint32(4,36+ts*4,true);ws(8,'WAVE');ws(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,2,true);v.setUint32(24,sr,true);v.setUint32(28,sr*4,true);v.setUint16(32,4,true);v.setUint16(34,16,true);ws(36,'data');v.setUint32(40,ts*4,true);
+  const i16=new Int16Array(buf,44);for(let i=0;i<out.length;i++)i16[i]=Math.max(-32768,Math.min(32767,out[i]*32767));
+  const blob=new Blob([buf],{type:'audio/wav'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='pythia_export.wav';a.click();
+  alert('Exported! Duration: '+td.toFixed(2)+'s');
+}
+
+// ── VB MAKER ───────────────────────────────────────
+function setLang(lang){
+  S.vbLang=lang;
+  document.getElementById('langJP').classList.toggle('active',lang==='JP');
+  document.getElementById('langEN').classList.toggle('active',lang==='EN');
+  S.phIdx=0;S.recordings={};
+  document.getElementById('pills').innerHTML='';
+  updatePh();
+}
+
+function initVBMaker(){S.phIdx=0;S.recordings={};S.recChunks=[];document.getElementById('vbTotal').textContent=currentPhonemes().length;document.getElementById('pills').innerHTML='';document.getElementById('recBtn').disabled=false;updatePh();}
+
+function updatePh(){
+  document.getElementById('vbDone').textContent=Object.keys(S.recordings).length;
+  document.getElementById('vbTotal').textContent=currentPhonemes().length;
+  const phs=currentPhonemes();
+  if(S.phIdx>=phs.length){allDone();return;}
+  const[r,h,hint]=phs[S.phIdx];
+  document.getElementById('phRomaji').textContent=r.toUpperCase();
+  document.getElementById('phHira').textContent=h||hint||'';
+  const done=r in S.recordings;
+  document.getElementById('phHint').textContent=done?'Recorded! Preview or move on.':(hint?'Say: '+hint:'Hold the button and say this sound clearly');
+  document.getElementById('prevBtn').disabled=!done;document.getElementById('nextBtn').disabled=!done;
+  document.getElementById('saveVbBtn').disabled=Object.keys(S.recordings).length===0;
+}
+
+function allDone(){document.getElementById('phRomaji').textContent='Done!';document.getElementById('phHira').textContent='All phonemes recorded';document.getElementById('phHint').textContent='Tap Save Voicebank below';document.getElementById('recBtn').disabled=true;document.getElementById('saveVbBtn').disabled=false;}
+
+async function startRec(e){
+  e.preventDefault();if(S.recording)return;
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    S.recChunks=[];S.mediaRecorder=new MediaRecorder(stream);
+    S.mediaRecorder.ondataavailable=ev=>{if(ev.data.size>0)S.recChunks.push(ev.data);};
+    S.mediaRecorder.start();S.recording=true;
+    const b=document.getElementById('recBtn');b.textContent='Recording... Release to stop';b.classList.add('recording');
+  }catch(err){alert('Microphone error: '+err.message);}
+}
+function stopRec(e){
+  e.preventDefault();if(!S.recording||!S.mediaRecorder)return;
+  S.mediaRecorder.stop();S.mediaRecorder.stream.getTracks().forEach(t=>t.stop());
+  S.recording=false;const b=document.getElementById('recBtn');b.textContent='Hold to Record';b.classList.remove('recording');
+  const rom=currentPhonemes()[S.phIdx][0];
+  S.mediaRecorder.onstop=()=>{S.recordings[rom]=new Blob(S.recChunks,{type:'audio/webm'});updatePh();};
+}
+async function previewRec(){const rom=currentPhonemes()[S.phIdx][0],blob=S.recordings[rom];if(!blob)return;new Audio(URL.createObjectURL(blob)).play();}
+function nextPh(){const rom=currentPhonemes()[S.phIdx][0];if(!(rom in S.recordings))return;const pill=document.createElement('div');pill.className='pill';pill.textContent=rom;document.getElementById('pills').appendChild(pill);S.phIdx++;updatePh();}
+function skipPh(){S.phIdx++;updatePh();}
+
+function abToWav(buf){
+  const sr=buf.sampleRate,len=buf.length,nc=Math.min(buf.numberOfChannels,2),out=new ArrayBuffer(44+len*nc*2),v=new DataView(out);
+  function ws(o,s){for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));}
+  ws(0,'RIFF');v.setUint32(4,36+len*nc*2,true);ws(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,nc,true);v.setUint32(24,sr,true);v.setUint32(28,sr*nc*2,true);v.setUint16(32,nc*2,true);v.setUint16(34,16,true);ws(36,'data');v.setUint32(40,len*nc*2,true);
+  const i16=new Int16Array(out,44),c0=buf.getChannelData(0),c1=nc>1?buf.getChannelData(1):c0;
+  for(let i=0;i<len;i++){i16[i*nc]=Math.max(-32768,Math.min(32767,c0[i]*32767));if(nc>1)i16[i*nc+1]=Math.max(-32768,Math.min(32767,c1[i]*32767));}
+  return out;
+}
+
+async function saveVoicebank(){
+  const name=document.getElementById('vbNameInput').value.trim()||'My Voicebank',samples={},ac=getAC(),wavFiles={};
+  for(const[rom,blob] of Object.entries(S.recordings)){
+    try{const ab=await blob.arrayBuffer(),decoded=await ac.decodeAudioData(ab),wav=abToWav(decoded),fname=rom+'.wav';
+    wavFiles[fname]=wav;samples[rom]=fname;
+    await new Promise(r=>setTimeout(r,150));const wb=new Blob([wav],{type:'audio/wav'}),a=document.createElement('a');a.href=URL.createObjectURL(wb);a.download=fname;a.click();}catch(e){console.warn(rom,e);}
+  }
+  await new Promise(r=>setTimeout(r,300));
+  const pyai={name,language:S.vbLang,base_path:'./',samples};
+  // Save to IndexedDB so it loads automatically next time
+  await dbSaveVB(name,pyai,wavFiles);
+  await refreshVBList();
+  const pb=new Blob([JSON.stringify(pyai,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(pb);a.download=name+'.PYAI';a.click();
+  alert('Voicebank saved to browser!\n\n'+Object.keys(samples).length+' phonemes stored — will load automatically next visit.\nAlso downloading files as backup.');
+  showScreen('mainScreen');
+}
+
+// ── INDEXEDDB ─────────────────────────────────────
+const DB_NAME='PythiaSynth',DB_VER=1;let db=null;
+function openDB(){return new Promise((res,rej)=>{const req=indexedDB.open(DB_NAME,DB_VER);req.onupgradeneeded=e=>{const d=e.target.result;if(!d.objectStoreNames.contains('voicebanks'))d.createObjectStore('voicebanks',{keyPath:'name'});if(!d.objectStoreNames.contains('samples'))d.createObjectStore('samples');};req.onsuccess=e=>{db=e.target.result;res(db);};req.onerror=e=>rej(e);});}
+async function dbSaveVB(name,meta,samplesMap){return new Promise((res,rej)=>{const tx=db.transaction(['voicebanks','samples'],'readwrite');tx.objectStore('voicebanks').put({name,meta});for(const[fn,buf] of Object.entries(samplesMap))tx.objectStore('samples').put(buf,name+'::'+fn);tx.oncomplete=()=>res();tx.onerror=e=>rej(e);});}
+async function dbLoadVB(name){return new Promise((res,rej)=>{const tx=db.transaction(['voicebanks','samples'],'readonly');const mr=tx.objectStore('voicebanks').get(name);mr.onsuccess=e=>{const row=e.target.result;if(!row){res(null);return;}const sm={},keys=Object.values(row.meta.samples||{});let done=0;if(!keys.length){res({meta:row.meta,sm});return;}for(const fn of keys){const r2=tx.objectStore('samples').get(name+'::'+fn);r2.onsuccess=ev=>{if(ev.target.result)sm[fn]=ev.target.result;done++;if(done===keys.length)res({meta:row.meta,sm});};r2.onerror=()=>{done++;if(done===keys.length)res({meta:row.meta,sm});};}};mr.onerror=e=>rej(e);});}
+async function dbListVBs(){return new Promise((res,rej)=>{const tx=db.transaction('voicebanks','readonly');const req=tx.objectStore('voicebanks').getAllKeys();req.onsuccess=e=>res(e.target.result);req.onerror=e=>rej(e);});}
+async function dbDeleteVB(name){return new Promise((res,rej)=>{const tx=db.transaction(['voicebanks','samples'],'readwrite');tx.objectStore('voicebanks').delete(name);const sr=tx.objectStore('samples').getAllKeys();sr.onsuccess=e=>{for(const k of e.target.result)if(k.startsWith(name+'::'))tx.objectStore('samples').delete(k);};tx.oncomplete=()=>res();tx.onerror=e=>rej(e);});}
+function setStatus(msg){document.getElementById('statusBar').textContent=msg;}
+async function loadSavedVB(name){setStatus('Loading '+name+'...');const data=await dbLoadVB(name);if(!data){setStatus('Not found!');return;}S.vb=data.meta;S.audioFiles=data.sm;document.getElementById('vbName').textContent='Current: '+name+' ('+(S.vb.language||'JP')+')';setStatus('Ready: '+Object.keys(S.audioFiles).length+' samples');}
+async function refreshVBList(){const list=await dbListVBs();const el=document.getElementById('savedVBList');el.innerHTML='';if(!list.length){el.innerHTML='<div style="font-size:11px;color:#666;margin-bottom:6px;">None saved yet</div>';return;}for(const name of list){const row=document.createElement('div');row.className='saved-vb-item';const lb=document.createElement('button');lb.textContent=name;lb.style.flex='1';lb.onclick=()=>loadSavedVB(name);const db2=document.createElement('button');db2.textContent='X';db2.className='del-btn';db2.onclick=async()=>{if(confirm('Delete "'+name+'"?')){await dbDeleteVB(name);await refreshVBList();}};row.appendChild(lb);row.appendChild(db2);el.appendChild(row);}}
+
+// ── INIT ──────────────────────────────────────────
+openDB().then(async()=>{setStatus('Ready');await refreshVBList();}).catch(e=>setStatus('Storage unavailable'));
+</script>
+</body>
+</html>
